@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shopify Image Resizer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0f0f0f;
+    --bg2: #1a1a1a;
+    --bg3: #222;
+    --border: rgba(255,255,255,0.08);
+    --border2: rgba(255,255,255,0.14);
+    --text: #f0f0f0;
+    --text2: #888;
+    --text3: #555;
+    --accent: #e8e0d0;
+    --green-bg: rgba(74,160,90,0.15);
+    --green-text: #6fcf80;
+    --amber-bg: rgba(200,150,50,0.15);
+    --amber-text: #f0b429;
+    --red-bg: rgba(200,60,60,0.15);
+    --red-text: #e05555;
+    --blue-bg: rgba(60,120,200,0.12);
+    --blue-text: #6ba3e8;
+    --radius: 10px;
+    --radius-sm: 6px;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Helvetica Neue', Helvetica, sans-serif;
+    font-size: 14px;
+    min-height: 100vh;
+    padding: 0;
+  }
+
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 20px 32px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .logo-mark {
+    width: 32px; height: 32px;
+    background: var(--accent);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .logo-mark svg { width: 18px; height: 18px; }
+
+  header h1 {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--text);
+  }
+
+  header p {
+    font-size: 12px;
+    color: var(--text2);
+    margin-top: 1px;
+  }
+
+  .badge-shopify {
+    margin-left: auto;
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    border: 1px solid var(--border2);
+    color: var(--text2);
+    letter-spacing: 0.02em;
+  }
+
+  main {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 32px 24px;
+  }
+
+  /* Input methods */
+  .input-methods {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  .method-card {
+    border: 1px dashed var(--border2);
+    border-radius: var(--radius);
+    padding: 28px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+    position: relative;
+    background: var(--bg2);
+  }
+
+  .method-card:hover, .method-card.active {
+    border-color: rgba(255,255,255,0.25);
+    background: var(--bg3);
+  }
+
+  .method-card.drag-over {
+    border-color: var(--accent);
+    background: rgba(232,224,208,0.05);
+  }
+
+  .method-card .icon {
+    font-size: 28px;
+    margin-bottom: 10px;
+    display: block;
+  }
+
+  .method-card h3 {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+
+  .method-card p {
+    font-size: 12px;
+    color: var(--text2);
+    line-height: 1.5;
+  }
+
+  .method-card input[type="file"] {
+    position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+  }
+
+  /* Stats bar */
+  .stats-bar {
+    display: none;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+
+  .stats-bar.visible { display: grid; }
+
+  .stat {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 12px 14px;
+  }
+
+  .stat-val {
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: -0.02em;
+    line-height: 1;
+  }
+
+  .stat-label {
+    font-size: 11px;
+    color: var(--text2);
+    margin-top: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  /* Progress */
+  .progress-wrap {
+    display: none;
+    margin-bottom: 16px;
+  }
+
+  .progress-wrap.visible { display: block; }
+
+  .progress-track {
+    height: 3px;
+    background: var(--border2);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-bottom: 8px;
+  }
+
+  .progress-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 2px;
+    width: 0%;
+    transition: width 0.25s ease;
+  }
+
+  .progress-label {
+    font-size: 12px;
+    color: var(--text2);
+  }
+
+  /* Queue */
+  #queue {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 16px;
+    max-height: 420px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border2) transparent;
+  }
+
+  .img-row {
+    display: grid;
+    grid-template-columns: 44px 1fr auto;
+    align-items: center;
+    gap: 12px;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 9px 12px;
+    transition: border-color 0.15s;
+  }
+
+  .img-row:hover { border-color: var(--border2); }
+
+  .img-thumb {
+    width: 44px; height: 44px;
+    object-fit: cover;
+    border-radius: 5px;
+    background: var(--bg3);
+    display: block;
+  }
+
+  .img-name {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 440px;
+  }
+
+  .img-meta {
+    font-size: 11px;
+    color: var(--text2);
+    margin-top: 3px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .row-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .badge {
+    font-size: 11px;
+    font-weight: 500;
+    padding: 3px 10px;
+    border-radius: 20px;
+    white-space: nowrap;
+    letter-spacing: 0.01em;
+  }
+
+  .badge-pending { background: var(--bg3); color: var(--text2); border: 1px solid var(--border2); }
+  .badge-skip    { background: var(--green-bg); color: var(--green-text); }
+  .badge-processing { background: var(--blue-bg); color: var(--blue-text); }
+  .badge-done    { background: var(--green-bg); color: var(--green-text); }
+  .badge-error   { background: var(--red-bg); color: var(--red-text); }
+
+  .dl-btn {
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    border: 1px solid var(--border2);
+    background: transparent;
+    color: var(--text2);
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s;
+    white-space: nowrap;
+  }
+
+  .dl-btn:hover { background: var(--bg3); color: var(--text); }
+
+  /* Action bar */
+  .action-bar {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  .action-bar.visible { display: flex; }
+
+  .btn-run {
+    flex: 1;
+    padding: 11px 0;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    border-radius: var(--radius-sm);
+    border: none;
+    background: var(--accent);
+    color: #111;
+    cursor: pointer;
+    transition: opacity 0.15s, transform 0.1s;
+  }
+
+  .btn-run:hover { opacity: 0.9; }
+  .btn-run:active { transform: scale(0.99); }
+  .btn-run:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
+
+  .btn-secondary {
+    padding: 11px 16px;
+    font-size: 13px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border2);
+    background: transparent;
+    color: var(--text2);
+    cursor: pointer;
+    transition: background 0.12s;
+    white-space: nowrap;
+  }
+
+  .btn-secondary:hover { background: var(--bg3); color: var(--text); }
+
+  .btn-zip {
+    display: none;
+    width: 100%;
+    padding: 11px 0;
+    font-size: 13px;
+    font-weight: 500;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border2);
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+    transition: background 0.12s;
+    margin-top: 4px;
+  }
+
+  .btn-zip:hover { background: var(--bg2); }
+  .btn-zip.visible { display: block; }
+
+  /* Note */
+  .note {
+    font-size: 11px;
+    color: var(--text3);
+    text-align: center;
+    margin-top: 24px;
+    line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo-mark">
+    <svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="1" y="1" width="7" height="7" rx="1.5" fill="#111"/>
+      <rect x="10" y="1" width="7" height="7" rx="1.5" fill="#111"/>
+      <rect x="1" y="10" width="7" height="7" rx="1.5" fill="#111"/>
+      <rect x="10" y="10" width="7" height="7" rx="1.5" fill="#444"/>
+    </svg>
+  </div>
+  <div>
+    <h1>Shopify Image Resizer</h1>
+    <p>Batch resize images to under 25MP — exports as high-quality JPG</p>
+  </div>
+  <span class="badge-shopify">25MP limit</span>
+</header>
+
+<main>
+
+  <div class="input-methods">
+    <!-- Drop zone -->
+    <div class="method-card" id="drop-zone">
+      <span class="icon">⬆</span>
+      <h3>Drop images or files</h3>
+      <p>Drag any images here, or click to browse.<br>Also accepts entire folders.</p>
+      <input type="file" id="file-input" multiple accept="image/*">
+    </div>
+
+    <!-- Folder picker -->
+    <div class="method-card" id="folder-card">
+      <span class="icon">📁</span>
+      <h3>Select a folder</h3>
+      <p>Pick an entire folder — every image inside will be loaded automatically.</p>
+      <input type="file" id="folder-input" webkitdirectory multiple accept="image/*">
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-bar" id="stats-bar">
+    <div class="stat"><div class="stat-val" id="st-total">0</div><div class="stat-label">Loaded</div></div>
+    <div class="stat"><div class="stat-val" id="st-needs">0</div><div class="stat-label">Need resize</div></div>
+    <div class="stat"><div class="stat-val" id="st-done">0</div><div class="stat-label">Done</div></div>
+    <div class="stat"><div class="stat-val" id="st-saved">—</div><div class="stat-label">Size saved</div></div>
+  </div>
+
+  <!-- Progress -->
+  <div class="progress-wrap" id="progress-wrap">
+    <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+    <div class="progress-label" id="progress-label">Processing…</div>
+  </div>
+
+  <!-- Queue -->
+  <div id="queue"></div>
+
+  <!-- Actions -->
+  <div class="action-bar" id="action-bar">
+    <button class="btn-secondary" id="clear-btn">✕ Clear all</button>
+    <button class="btn-run" id="run-btn">▶ Resize &amp; export all</button>
+  </div>
+
+  <button class="btn-zip" id="zip-btn">⬇ Download all as ZIP</button>
+
+  <p class="note">All processing happens locally in your browser. No images are uploaded anywhere.</p>
+
+</main>
+
+<script>
+const MAX_MP = 25000000;
+const QUALITY = 0.92;
+
+let items = [];
+let blobs = {};
+
+const dropZone   = document.getElementById('drop-zone');
+const fileInput  = document.getElementById('file-input');
+const folderCard = document.getElementById('folder-card');
+const folderInput= document.getElementById('folder-input');
+const queueEl    = document.getElementById('queue');
+const runBtn     = document.getElementById('run-btn');
+const clearBtn   = document.getElementById('clear-btn');
+const zipBtn     = document.getElementById('zip-btn');
+const statsBar   = document.getElementById('stats-bar');
+const progressWrap = document.getElementById('progress-wrap');
+const progressFill = document.getElementById('progress-fill');
+const progressLabel= document.getElementById('progress-label');
+const actionBar  = document.getElementById('action-bar');
+
+// Drag and drop on drop zone
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  const files = getAllFiles(e.dataTransfer);
+  addFiles(files);
+});
+
+// Also support dragging onto the whole window
+window.addEventListener('dragover', e => e.preventDefault());
+window.addEventListener('drop', e => {
+  e.preventDefault();
+  const files = getAllFiles(e.dataTransfer);
+  if (files.length) addFiles(files);
+});
+
+function getAllFiles(dt) {
+  // Prefer FileList items (handles folders via items API in Chrome)
+  const out = [];
+  if (dt.items) {
+    for (const item of dt.items) {
+      const f = item.getAsFile();
+      if (f && f.type.startsWith('image/')) out.push(f);
+    }
+  } else {
+    for (const f of dt.files) {
+      if (f.type.startsWith('image/')) out.push(f);
+    }
+  }
+  return out;
+}
+
+fileInput.addEventListener('change', () => {
+  addFiles(Array.from(fileInput.files).filter(f => f.type.startsWith('image/')));
+  fileInput.value = '';
+});
+
+folderInput.addEventListener('change', () => {
+  addFiles(Array.from(folderInput.files).filter(f => f.type.startsWith('image/')));
+  folderInput.value = '';
+});
+
+function addFiles(files) {
+  files.forEach(f => {
+    // Avoid duplicates by name+size
+    if (items.find(i => i.file.name === f.name && i.file.size === f.size)) return;
+    const id = Math.random().toString(36).slice(2);
+    items.push({ id, file: f, status: 'pending', origSize: f.size, newSize: null, origW: null, origH: null, newW: null, newH: null });
+    renderRow(items[items.length - 1]);
+  });
+  loadDimensions();
+  updateUI();
+}
+
+function renderRow(item) {
+  const row = document.createElement('div');
+  row.className = 'img-row';
+  row.id = 'row-' + item.id;
+
+  const thumb = document.createElement('img');
+  thumb.className = 'img-thumb';
+  const objUrl = URL.createObjectURL(item.file);
+  thumb.src = objUrl;
+  thumb.onload = () => URL.revokeObjectURL(objUrl);
+
+  const info = document.createElement('div');
+  info.style.overflow = 'hidden';
+  info.innerHTML = `<div class="img-name">${item.file.name}</div><div class="img-meta" id="meta-${item.id}">Reading dimensions…</div>`;
+
+  const right = document.createElement('div');
+  right.className = 'row-right';
+  right.innerHTML = `<span class="badge badge-pending" id="badge-${item.id}">Pending</span>`;
+
+  row.appendChild(thumb);
+  row.appendChild(info);
+  row.appendChild(right);
+  queueEl.appendChild(row);
+}
+
+function loadDimensions() {
+  items.filter(i => i.origW === null).forEach(item => {
+    const img = new Image();
+    const url = URL.createObjectURL(item.file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      item.origW = img.naturalWidth;
+      item.origH = img.naturalHeight;
+      const mp = item.origW * item.origH;
+      const needsResize = mp > MAX_MP;
+      document.getElementById('meta-' + item.id).textContent =
+        `${item.origW} × ${item.origH}  ·  ${(mp/1e6).toFixed(1)} MP  ·  ${fmtBytes(item.origSize)}`;
+      if (!needsResize) {
+        item.status = 'skip';
+        setBadge(item.id, 'skip', 'Under 25MP ✓');
+      }
+      updateStats();
+    };
+    img.src = url;
+  });
+}
+
+function setBadge(id, type, text) {
+  const b = document.getElementById('badge-' + id);
+  if (b) { b.className = 'badge badge-' + type; b.textContent = text; }
+}
+
+function updateUI() {
+  const has = items.length > 0;
+  statsBar.classList.toggle('visible', has);
+  actionBar.classList.toggle('visible', has);
+  updateStats();
+}
+
+function updateStats() {
+  document.getElementById('st-total').textContent = items.length;
+  const needs = items.filter(i => i.origW && i.origW * i.origH > MAX_MP).length;
+  document.getElementById('st-needs').textContent = needs;
+  const done = items.filter(i => i.status === 'done' || (i.status === 'skip' && i.newSize)).length;
+  document.getElementById('st-done').textContent = done;
+  const savedOrig = items.filter(i => i.newSize).reduce((a, i) => a + i.origSize, 0);
+  const savedNew  = items.filter(i => i.newSize).reduce((a, i) => a + i.newSize, 0);
+  document.getElementById('st-saved').textContent = savedOrig > 0 ? fmtBytes(savedOrig - savedNew) : '—';
+}
+
+runBtn.addEventListener('click', async () => {
+  if (!items.length) return;
+  runBtn.disabled = true;
+  progressWrap.classList.add('visible');
+  zipBtn.classList.remove('visible');
+
+  let done = 0;
+  for (const item of items) {
+    progressLabel.textContent = `Processing ${done + 1} of ${items.length}: ${item.file.name}`;
+    progressFill.style.width = ((done / items.length) * 100) + '%';
+    await new Promise(r => setTimeout(r, 0));
+
+    if (item.status === 'done' || (item.status === 'skip' && item.newSize)) {
+      done++; continue;
+    }
+
+    setBadge(item.id, 'processing', item.status === 'skip' ? 'Converting…' : 'Resizing…');
+    await new Promise(r => setTimeout(r, 0));
+
+    try {
+      let nw = item.origW, nh = item.origH;
+      if (item.origW * item.origH > MAX_MP) {
+        [nw, nh] = calcDims(item.origW, item.origH);
+      }
+      const blob = await processImage(item.file, nw, nh);
+      const outName = stripExt(item.file.name) + '_shopify.jpg';
+      blobs[item.id] = { blob, name: outName };
+      item.newSize = blob.size;
+      item.newW = nw; item.newH = nh;
+      item.status = 'done';
+
+      const meta = document.getElementById('meta-' + item.id);
+      if (nw !== item.origW || nh !== item.origH) {
+        meta.textContent = `${item.origW}×${item.origH} → ${nw}×${nh}  ·  ${fmtBytes(item.origSize)} → ${fmtBytes(blob.size)}`;
+      } else {
+        meta.textContent = `${nw}×${nh}  ·  ${fmtBytes(item.origSize)} → ${fmtBytes(blob.size)}  (JPG converted)`;
+      }
+
+      setBadge(item.id, 'done', nw !== item.origW ? 'Resized ✓' : 'Exported ✓');
+      addDownloadBtn(item);
+    } catch(e) {
+      item.status = 'error';
+      setBadge(item.id, 'error', 'Failed');
+    }
+
+    done++;
+    updateStats();
+  }
+
+  progressFill.style.width = '100%';
+  progressLabel.textContent = `✓ Done — ${done} images processed`;
+  runBtn.disabled = false;
+
+  if (Object.keys(blobs).length > 1) zipBtn.classList.add('visible');
+});
+
+function addDownloadBtn(item) {
+  const right = document.querySelector('#row-' + item.id + ' .row-right');
+  if (!right || right.querySelector('.dl-btn')) return;
+  const btn = document.createElement('button');
+  btn.className = 'dl-btn';
+  btn.textContent = '↓ Save';
+  btn.addEventListener('click', () => triggerDownload(blobs[item.id]));
+  right.insertBefore(btn, right.firstChild);
+}
+
+zipBtn.addEventListener('click', async () => {
+  zipBtn.textContent = '⏳ Zipping…';
+  zipBtn.disabled = true;
+  const zip = new JSZip();
+  for (const b of Object.values(blobs)) zip.file(b.name, b.blob);
+  const content = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+  triggerDownload({ blob: content, name: 'shopify_resized.zip' });
+  zipBtn.textContent = '⬇ Download all as ZIP';
+  zipBtn.disabled = false;
+});
+
+clearBtn.addEventListener('click', () => {
+  items = []; blobs = {};
+  queueEl.innerHTML = '';
+  fileInput.value = ''; folderInput.value = '';
+  zipBtn.classList.remove('visible');
+  progressWrap.classList.remove('visible');
+  statsBar.classList.remove('visible');
+  actionBar.classList.remove('visible');
+});
+
+function calcDims(w, h) {
+  const scale = Math.sqrt(MAX_MP / (w * h)) * 0.995;
+  return [Math.floor(w * scale), Math.floor(h * scale)];
+}
+
+function processImage(file, nw, nh) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const canvas = document.createElement('canvas');
+      canvas.width = nw; canvas.height = nh;
+      const ctx = canvas.getContext('2d');
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, 0, 0, nw, nh);
+      canvas.toBlob(b => b ? resolve(b) : reject(new Error('toBlob failed')), 'image/jpeg', QUALITY);
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
+function triggerDownload({ blob, name }) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+}
+
+function fmtBytes(b) {
+  return b > 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.round(b / 1024) + ' KB';
+}
+
+function stripExt(name) {
+  return name.replace(/\.[^/.]+$/, '');
+}
+</script>
+</body>
+</html>
